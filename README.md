@@ -1,10 +1,10 @@
 # cell2image
 
-A mini work just for fun. I am wondering what would a cell looks like, if we trying to visualize the cell itself into an image. The basic idea would be like: the arrangement should follow the gene-gene structure, which means we should consider to use gene embedding. Then, optimal transport is used to map the gene position to a 2D image, so finally we can visualize a cell into image. 
+A mini work just for fun. I am wondering what would a cell looks like, if we trying to visualize the cell itself into an image. The basic idea would be like: the arrangement should follow the gene-gene structure, which means we should consider to use gene embedding. Then, optimal transport is used to map the gene position to a 2D image, so finally we can visualize a cell into image. The gene position in the image should be meaningful, and we expect they can form pattern that represent some kind of functional sets. 
 
 Compact GenePT-only code for gene embeddings, a shared gene grid, numerical
 cell images and visualization. It reads the existing processed expression
-object; I don't know what can this repo do, to be honest. No direct pattern can be found in the images, only subtle differences could be noticed across these clusters.  
+object; no direct pattern can be found via human eyes in the images, only subtle differences could be noticed across these clusters.  
 
 ## Examples
 
