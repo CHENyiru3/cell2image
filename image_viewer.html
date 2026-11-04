@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GenePT cell images</title>
+<style>
+body { max-width: 1250px; margin: 24px auto; padding: 0 18px; font: 14px system-ui; color: #183139; background: #f3f7f7; }
+p { line-height: 1.6; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+label { display: grid; gap: 5px; font-size: 12px; }
+select, input, button { padding: 8px; font: inherit; border: 1px solid #9aafb7; border-radius: 5px; background: white; }
+#cell { max-width: 300px; }
+main { display: grid; grid-template-columns: minmax(360px, 720px) 1fr; gap: 20px; }
+.card { padding: 18px; background: white; border: 1px solid #d4dfe1; border-radius: 10px; }
+canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; cursor: crosshair; }
+#meta, #hover { white-space: pre-line; line-height: 1.7; overflow-wrap: anywhere; margin-bottom: 14px; }
+#hover { min-height: 200px; }
+@media(max-width: 800px) { main { grid-template-columns: 1fr; } }
+</style>
+<h1>GenePT → cell images</h1>
+<p>One gene per occupied pixel. Both samples and all cells share the same mapping and colors. Leiden clusters are exploratory labels.</p>
+<div class="controls">
+  <label>Sample<select id="sample"><option value="">All samples</option></select></label>
+  <label>Leiden cluster<select id="cluster"><option value="">All clusters</option></select></label>
+  <label>Cell<select id="cell"></select></label>
+  <label>Layout<select id="layout"><option value="ot">OT assignment</option><option value="random">Fixed random</option></select></label>
+  <label>Display<select id="mode">
+    <option value="rgb">RGB</option><option value="grayscale">Grayscale / channel sum</option>
+    <option value="red">R component</option><option value="green">G component</option><option value="blue">B component</option>
+  </select></label>
+  <label>Gene symbol or Ensembl ID<input id="gene" list="genes" placeholder="CD74"></label>
+  <button id="clear">Clear highlight</button>
+</div>
+<datalist id="genes"></datalist>
+<p id="status"></p>
+<main>
+  <section class="card"><div id="meta"></div><canvas id="image"></canvas></section>
+  <aside class="card">
+    <h2>Pixel inspector</h2><div id="hover">Hover over a pixel or search for a gene.</div>
+    <h2>Shared display scale</h2><p id="scale"></p>
+    <p>Black occupied pixels have zero expression. Gray padding has no gene. Source: GenePT.</p>
+    <p>Display RGB = clip(log expression / L, 0, 1) × weights / max(weights).
+    Numerical float32 images retain expression in their channel sum. Channel views show components of the display transform.</p>
+  </aside>
+</main>
+<p>Self-contained offline viewer. Colors depend on gene embeddings; expression controls intensity. Neither sample is a treatment or control.</p>
+<script>
+const D = __DATA__;
+const $ = id => document.getElementById(id);
+function unpack(text) {
+  const bytes = Uint8Array.from(atob(text), c => c.charCodeAt(0));
+  return new Float32Array(bytes.buffer);
+}
+const logs = unpack(D.log), raw = unpack(D.raw), weights = unpack(D.weights);
+const n = D.n, G = D.ids.length, canvas = $('image'), ctx = canvas.getContext('2d');
+canvas.width = n; canvas.height = n;
+let selected = 0, highlighted = -1;
+const inverse = new Int32Array(n * n).fill(-1);
+for (const value of [...new Set(D.cells.map(c => c.sample))].sort()) $('sample').add(new Option(value, value));
+for (const value of [...new Set(D.cells.map(c => c.leiden))].sort((a,b) => +a - +b)) $('cluster').add(new Option(value, value));
+const fragment = document.createDocumentFragment();
+D.symbols.forEach((symbol, i) => {
+  const option = document.createElement('option');
+  option.value = symbol; option.label = D.ids[i]; fragment.appendChild(option);
+});
+$('genes').appendChild(fragment);
+function placement() { return D[$('layout').value]; }
+function inspect(g, pixel) {
+  if (selected < 0) return;
+  if (g < 0) { $('hover').textContent = `Pixel [${Math.floor(pixel/n)}, ${pixel%n}]: padding; no gene.`; return; }
+  const w = Array.from(weights.slice(g * 3, g * 3 + 3));
+  const value = logs[selected * G + g];
+  $('hover').textContent = [
+    `${D.symbols[g]} · ${D.ids[g]}`,
+    `Pixel [${Math.floor(pixel/n)}, ${pixel%n}]`,
+    `Raw count: ${raw[selected * G + g]}`,
+    `Log expression: ${value.toPrecision(7)}`,
+    `RGB weights: ${w.map(v => v.toFixed(6)).join(', ')}`,
+    `Numerical log RGB: ${w.map(v => (v * value).toPrecision(6)).join(', ')}`,
+    'Embedding source: GenePT (1/1)'
+  ].join('\n');
+}
+function draw() {
+  inverse.fill(-1); ctx.clearRect(0, 0, n, n);
+  if (selected < 0) return;
+  const pixels = placement(), mode = $('mode').value, image = ctx.createImageData(n, n);
+  for (let p = 0; p < n * n; p++) image.data.set([217,217,217,255], p * 4);
+  for (let g = 0; g < G; g++) {
+    const p = pixels[g], brightness = Math.min(logs[selected * G + g] / D.L, 1);
+    const w = weights.subarray(g * 3, g * 3 + 3), maximum = Math.max(...w);
+    inverse[p] = g;
+    let color = Array.from(w, v => brightness * v / maximum);
+    if (mode === 'grayscale') color = [brightness, brightness, brightness];
+    const channel = ['red','green','blue'].indexOf(mode);
+    if (channel >= 0) color = Array(3).fill(color[channel]);
+    for (let j = 0; j < 3; j++) image.data[p * 4 + j] = Math.round(255 * color[j]);
+  }
+  ctx.putImageData(image, 0, 0);
+  if (highlighted >= 0) {
+    const p = pixels[highlighted];
+    ctx.strokeStyle = '#ffdf00'; ctx.lineWidth = 0.5;
+    ctx.strokeRect(p % n - 1, Math.floor(p/n) - 1, 3, 3);
+    inspect(highlighted, p);
+  }
+  const c = D.cells[selected];
+  $('meta').textContent = `${c.cell_id} | ${c.sample} | Leiden ${c.leiden}\nCounts ${c.total_counts.toLocaleString()} | detected genes ${c.n_genes_by_counts.toLocaleString()}`;
+}
+function filterCells() {
+  const sample = $('sample').value, cluster = $('cluster').value;
+  const rows = D.cells.map((c,i) => ({c,i})).filter(({c}) => (!sample || c.sample === sample) && (!cluster || c.leiden === cluster));
+  $('cell').replaceChildren();
+  for (const {c,i} of rows) $('cell').add(new Option(`${c.cell_id} · C${c.leiden}`, i));
+  selected = rows.length ? rows[0].i : -1;
+  if (selected >= 0) $('cell').value = selected;
+  else { $('meta').textContent = 'No cells in this stratum.'; $('hover').textContent = 'Change the sample or cluster filter.'; }
+  draw();
+  $('status').textContent = `${rows.length}/${D.cells.length} cells · ${G.toLocaleString()} genes · ${n} × ${n} · ${n*n-G} padding pixels`;
+}
+for (const id of ['sample','cluster']) $(id).onchange = filterCells;
+$('cell').onchange = () => { selected = +$('cell').value; draw(); };
+for (const id of ['layout','mode']) $(id).onchange = draw;
+$('gene').oninput = () => {
+  const query = $('gene').value.trim().toUpperCase();
+  highlighted = query ? D.ids.findIndex((id,i) => id.toUpperCase() === query || D.symbols[i].toUpperCase() === query) : -1;
+  draw();
+  if (query && highlighted < 0) $('hover').textContent = 'No exact match among retained genes.';
+};
+$('clear').onclick = () => { $('gene').value = ''; highlighted = -1; $('hover').textContent = 'Hover over a pixel or search for a gene.'; draw(); };
+canvas.onmousemove = event => {
+  const r = canvas.getBoundingClientRect(), col = Math.floor((event.clientX-r.left)*n/r.width), row = Math.floor((event.clientY-r.top)*n/r.height);
+  if (row >= 0 && row < n && col >= 0 && col < n) inspect(inverse[row*n+col], row*n+col);
+};
+$('scale').textContent = `L=${D.L.toFixed(6)}. Identical across all cells, samples and layouts. No per-cell contrast normalization.`;
+filterCells();
+</script>
+</html>

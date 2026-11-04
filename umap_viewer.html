@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GenePT gene UMAP</title>
+<style>
+body { max-width: 1100px; margin: 24px auto; padding: 0 18px; font: 15px system-ui; color: #183139; background: #f3f7f7; }
+p { line-height: 1.6; }
+input, button { padding: 8px; font: inherit; border: 1px solid #9aafb7; border-radius: 5px; }
+canvas { width: 100%; height: auto; display: block; background: #20262b; border-radius: 8px; }
+#info { min-height: 60px; padding: 16px; margin: 14px 0; background: white; line-height: 1.7; }
+</style>
+<h1>GenePT gene embedding UMAP</h1>
+<p id="subtitle"></p>
+<label>Gene symbol or Ensembl ID <input id="gene" list="genes" placeholder="CD74"></label>
+<button id="clear">Clear</button><datalist id="genes"></datalist>
+<div id="info">Hover over a point or search for a gene.</div>
+<canvas id="plot" width="1100" height="880"></canvas>
+<p>Original 1,536D GenePT vectors, row L2 normalization and cosine UMAP. All matched expression genes are shown.
+Colors use PCA3 and softmax with temperature 2; expression does not affect this plot.</p>
+<script>
+const D = __DATA__;
+const canvas = document.getElementById('plot'), ctx = canvas.getContext('2d');
+const info = document.getElementById('info'), search = document.getElementById('gene');
+const xs = D.xy.map(p => p[0]), ys = D.xy.map(p => p[1]);
+const xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
+const scale = Math.min((canvas.width-70)/(xmax-xmin), (canvas.height-70)/(ymax-ymin));
+const points = D.xy.map(p => [(p[0]-(xmin+xmax)/2)*scale+canvas.width/2, canvas.height/2-(p[1]-(ymin+ymax)/2)*scale]);
+const rgb = D.weights.map(w => w.map(v => v/Math.max(...w)));
+let highlighted = -1;
+document.getElementById('subtitle').textContent = `${D.ids.length.toLocaleString()} genes · no subsampling · source: GenePT`;
+const fragment = document.createDocumentFragment();
+D.symbols.forEach((symbol, i) => {
+  const option = document.createElement('option');
+  option.value = symbol; option.label = D.ids[i]; fragment.appendChild(option);
+});
+document.getElementById('genes').appendChild(fragment);
+function inspect(i) {
+  info.textContent = `${D.symbols[i]} · ${D.ids[i]} | UMAP (${D.xy[i].map(v => v.toFixed(4)).join(', ')}) | RGB weights (${D.weights[i].map(v => v.toFixed(6)).join(', ')}) | GenePT`;
+}
+function draw() {
+  ctx.fillStyle = '#20262b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  points.forEach((p,i) => {
+    ctx.fillStyle = `rgb(${rgb[i].map(v => Math.round(v*255)).join(',')})`;
+    ctx.beginPath(); ctx.arc(p[0], p[1], 1.7, 0, Math.PI*2); ctx.fill();
+  });
+  if (highlighted >= 0) {
+    const p = points[highlighted];
+    ctx.strokeStyle = '#ffdf00'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p[0], p[1], 8, 0, Math.PI*2); ctx.stroke(); inspect(highlighted);
+  }
+}
+search.oninput = () => {
+  const query = search.value.trim().toUpperCase();
+  highlighted = query ? D.ids.findIndex((id,i) => id.toUpperCase() === query || D.symbols[i].toUpperCase() === query) : -1;
+  draw();
+  if (query && highlighted < 0) info.textContent = 'No exact match among plotted genes.';
+};
+document.getElementById('clear').onclick = () => { search.value = ''; highlighted = -1; info.textContent = 'Hover over a point or search for a gene.'; draw(); };
+canvas.onmousemove = event => {
+  const r = canvas.getBoundingClientRect(), x = (event.clientX-r.left)*canvas.width/r.width, y = (event.clientY-r.top)*canvas.height/r.height;
+  let closest = -1, distance = 144;
+  points.forEach((p,i) => { const d = (p[0]-x)**2+(p[1]-y)**2; if (d < distance) { closest = i; distance = d; } });
+  if (closest >= 0) inspect(closest);
+};
+draw();
+</script>
+</html>

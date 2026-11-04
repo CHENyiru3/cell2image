@@ -1,0 +1,19 @@
+# Paths are relative to this configuration file.
+expression: ../outputs/processed_expression.h5ad
+genept: ../data/embeddings/cache/other_embeddings/GenePT_ada.pkl
+example_cells: ../outputs/example_images/cells.parquet
+output: outputs
+
+seed: 42
+n_genes: 2025
+exclude_prefixes: [RPL, RPS, MT-]
+exclude_symbols: [EEF1A1]
+temperature: 2.0
+display_scale: 3.89857816696167
+export_cells: 256
+viewer_cells: 32
+batch_size: 32
+umap:
+  n_neighbors: 30
+  min_dist: 0.1
+  n_epochs: 300
