@@ -4,8 +4,7 @@ A mini work just for fun. I am wondering what would a cell looks like, if we try
 
 Compact GenePT-only code for gene embeddings, a shared gene grid, numerical
 cell images and visualization. It reads the existing processed expression
-object; downloading, cell QC, clustering, model training and evaluation suites
-are outside this directory.
+object; I don't know what can this repo do, to be honest. No direct pattern can be found in the images, only subtle differences could be noticed across these clusters.  
 
 ## Examples
 
